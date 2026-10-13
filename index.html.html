@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>টমেটো অ্যাটাক!</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    --velvet: #5a0f1c;
+    --velvet-deep: #2b0710;
+    --tomato: #e0301e;
+    --leaf: #4f9a3a;
+    --spot: #fff3c9;
+    --wood: #8a5a2b;
+    --ink: #fdf3e3;
+    --font: "Hind Siliguri", "Noto Sans Bengali", "Kalpurush", system-ui, sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--velvet-deep);
+    color: var(--ink);
+    font-family: var(--font);
+    display: flex; align-items: center; justify-content: center;
+    -webkit-user-select: none; user-select: none; touch-action: manipulation;
+    overflow: hidden;
+  }
+  .game {
+    position: relative;
+    width: min(100vw, calc((100dvh - 150px) * 0.625));
+    min-width: 260px;
+  }
+  .hud {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 6px 4px 8px; font-size: clamp(14px, 4vw, 20px); font-weight: 600;
+  }
+  .hud b { font-size: 1.25em; color: var(--spot); font-weight: 700; }
+  .hearts { letter-spacing: 2px; color: var(--tomato); }
+  .stage { position: relative; }
+  canvas {
+    display: block; width: 100%; height: auto; aspect-ratio: 400 / 640;
+    border-radius: 10px; background: #1a0509;
+    box-shadow: 0 0 0 3px #3b0a14, 0 12px 40px rgba(0,0,0,.6);
+  }
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding: 24px; gap: 10px; border-radius: 10px;
+    background: rgba(30, 4, 10, .78);
+  }
+  .overlay.hidden { display: none; }
+  .overlay h1 { margin: 0; font-size: clamp(30px, 9vw, 46px); line-height: 1.15; font-weight: 700; color: var(--tomato); text-shadow: 0 3px 0 #2b0710; }
+  .overlay p { margin: 0; font-size: clamp(15px, 4.2vw, 19px); line-height: 1.5; max-width: 30ch; }
+  .overlay .big { font-size: clamp(34px, 11vw, 56px); font-weight: 700; color: var(--spot); line-height: 1.1; }
+  button {
+    font-family: var(--font); cursor: pointer; color: #fff; border: 0;
+  }
+  .play {
+    margin-top: 8px; background: var(--tomato); font-size: clamp(17px, 5vw, 22px); font-weight: 700;
+    padding: 12px 28px; border-radius: 999px; box-shadow: 0 5px 0 #8f1a0e;
+    transition: transform .08s, box-shadow .08s;
+  }
+  .play:active { transform: translateY(4px); box-shadow: 0 1px 0 #8f1a0e; }
+  .play:focus-visible, .pad:focus-visible { outline: 3px solid var(--spot); outline-offset: 3px; }
+  .toast {
+    position: absolute; top: 14%; left: 0; right: 0; text-align: center; pointer-events: none;
+    font-size: clamp(26px, 8vw, 40px); font-weight: 700; color: var(--spot);
+    text-shadow: 0 3px 0 #2b0710; opacity: 0; transform: scale(.8);
+    transition: opacity .25s, transform .25s;
+  }
+  .toast.show { opacity: 1; transform: scale(1); }
+  .pads { display: flex; gap: 12px; margin-top: 10px; }
+  .pad {
+    flex: 1; background: #4a0c18; color: var(--ink); font-size: 30px; padding: 12px 0;
+    border-radius: 14px; box-shadow: 0 4px 0 #240509; touch-action: none;
+  }
+  .pad.down { background: #7a1426; transform: translateY(3px); box-shadow: 0 1px 0 #240509; }
+  .hint { text-align: center; font-size: 13px; opacity: .65; margin-top: 6px; }
+  @media (prefers-reduced-motion: reduce) { .toast, .play { transition: none; } }
+</style>
+</head>
+<body>
+<div class="game">
+  <div class="hud">
+    <span>স্কোর: <b id="score">০</b></span>
+    <span>লেভেল: <b id="level">১</b></span>
+    <span class="hearts" id="lives" aria-label="জীবন">♥♥♥</span>
+  </div>
+  <div class="stage">
+    <canvas id="c" width="400" height="640" aria-label="টমেটো অ্যাটাক গেম"></canvas>
+    <div class="toast" id="toast"></div>
+    <div class="overlay" id="overlay">
+      <h1 id="ovTitle">টমেটো অ্যাটাক! 🍅</h1>
+      <p id="ovText">দর্শকদের ছোড়া টমেটো থেকে লোকটাকে বাঁচাও!</p>
+      <div class="big" id="ovBig" hidden></div>
+      <p id="ovBest" hidden></p>
+      <button class="play" id="startBtn">খেলা শুরু করো</button>
+      <p style="font-size:14px;opacity:.7">← → চাপো অথবা নিচের বোতাম টেপো</p>
+    </div>
+  </div>
+  <div class="pads">
+    <button class="pad" id="btnL" aria-label="বামে">◀</button>
+    <button class="pad" id="btnR" aria-label="ডানে">▶</button>
+  </div>
+  <div class="hint">কিবোর্ডে: ← → অথবা A / D</div>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  const W = 400, H = 640, FLOOR = 570;
+
+  // ---------- helpers ----------
+  const bn = n => Number(n).toLocaleString('bn-BD', { useGrouping: false });
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const el = id => document.getElementById(id);
+  const scoreEl = el('score'), levelEl = el('level'), livesEl = el('lives');
+  const overlay = el('overlay'), toast = el('toast');
+
+  function fitCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  fitCanvas();
+
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('tomato-attack-best') || '0', 10) || 0; } catch (e) {}
+  function saveBest() { try { localStorage.setItem('tomato-attack-best', String(best)); } catch (e) {} }
+
+  // ---------- audio (tiny, optional) ----------
+  let actx = null;
+  function sfx(type) {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.connect(g); g.connect(actx.destination);
+      const t = actx.currentTime;
+      if (type === 'hit') { o.type = 'sawtooth'; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(60, t + 0.25); g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.28); o.start(t); o.stop(t + 0.3); }
+      else if (type === 'level') { o.type = 'triangle'; o.frequency.setValueAtTime(440, t); o.frequency.setValueAtTime(660, t + 0.1); g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.start(t); o.stop(t + 0.32); }
+      else { o.type = 'sine'; o.frequency.setValueAtTime(520, t); g.gain.setValueAtTime(0.05, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.07); o.start(t); o.stop(t + 0.08); }
+    } catch (e) {}
+  }
+
+  // ---------- state ----------
+  let state = 'ready';
+  let score, level, lives, dodged, spawnT, hurtT, shake, last;
+  const man = { x: W / 2, v: 0, step: 0, face: 1 };
+  let tomatoes = [], floorSplats = [], drops = [];
+  const keys = { l: false, r: false };
+  const pad = { l: false, r: false };
+
+  // audience: 8 seats along the top
+  const seats = Array.from({ length: 8 }, (_, i) => ({
+    x: 28 + i * 49.4, y: 58 + (i % 2) * 8, arm: 0, ph: Math.random() * 6, tone: ['#1b0a10', '#25101a', '#170a14'][i % 3]
+  }));
+
+  function reset() {
+    score = 0; level = 1; lives = 3; dodged = 0; spawnT = 1; hurtT = 0; shake = 0;
+    man.x = W / 2; man.v = 0;
+    tomatoes = []; floorSplats = []; drops = [];
+    updateHud();
+  }
+  function updateHud() {
+    scoreEl.textContent = bn(score);
+    levelEl.textContent = bn(level);
+    livesEl.textContent = '♥'.repeat(Math.max(lives, 0)) + '♡'.repeat(Math.max(3 - lives, 0));
+  }
+  function showToast(t) {
+    toast.textContent = t; toast.classList.add('show');
+    clearTimeout(showToast.id);
+    showToast.id = setTimeout(() => toast.classList.remove('show'), 1100);
+  }
+
+  function start() {
+    reset(); state = 'play'; last = performance.now();
+    overlay.classList.add('hidden');
+    sfx('pop');
+  }
+  function gameOver() {
+    state = 'over';
+    if (score > best) { best = score; saveBest(); }
+    el('ovTitle').textContent = 'টমেটোতে ভিজে গেছে! 🍅';
+    el('ovText').textContent = 'তোমার স্কোর';
+    const big = el('ovBig'); big.hidden = false; big.textContent = bn(score);
+    const b = el('ovBest'); b.hidden = false; b.textContent = 'সেরা স্কোর: ' + bn(best) + ' • লেভেল ' + bn(level);
+    el('startBtn').textContent = 'আবার খেলো';
+    overlay.classList.remove('hidden');
+    el('startBtn').focus({ preventScroll: true });
+  }
+
+  // ---------- spawning ----------
+  function throwTomato() {
+    const s = seats[Math.floor(Math.random() * seats.length)];
+    s.arm = 0.3;
+    const speed = 170 + 38 * (level - 1) + rand(0, 40);
+    // aim loosely at the performer; more accurate at higher levels
+    const aimError = Math.max(30, 150 - level * 12);
+    const tx = man.x + rand(-aimError, aimError);
+    const dy = FLOOR - s.y;
+    const t = dy / speed;
+    tomatoes.push({ x: s.x, y: s.y + 8, vx: (tx - s.x) / t, vy: speed, r: 13, rot: rand(0, 6), spin: rand(-6, 6) });
+  }
+
+  function splat(x, y, n, big) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(Math.PI, Math.PI * 2);
+      const sp = rand(60, big ? 260 : 150);
+      drops.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.35, 0.7), r: rand(2, big ? 5 : 3.5) });
+    }
+  }
+
+  // ---------- update ----------
+  function update(dt) {
+    // movement
+    const dir = (keys.l || pad.l ? -1 : 0) + (keys.r || pad.r ? 1 : 0);
+    const target = dir * 270;
+    man.v += (target - man.v) * Math.min(1, dt * 14);
+    man.x = Math.max(24, Math.min(W - 24, man.x + man.v * dt));
+    if (dir) { man.face = dir; man.step += dt * 14; } else man.step *= 0.9;
+
+    // level pacing
+    const interval = Math.max(0.3, 1.0 - 0.075 * (level - 1));
+    spawnT -= dt;
+    if (spawnT <= 0) { throwTomato(); spawnT = interval * rand(0.7, 1.25); }
+
+    if (hurtT > 0) hurtT -= dt;
+    if (shake > 0) shake -= dt;
+
+    seats.forEach(s => { if (s.arm > 0) s.arm -= dt; });
+
+    for (let i = tomatoes.length - 1; i >= 0; i--) {
+      const t = tomatoes[i];
+      t.x += t.vx * dt; t.y += t.vy * dt; t.rot += t.spin * dt;
+      t.vy += 60 * dt;
+
+      // collision with performer (body+head box)
+      if (hurtT <= 0) {
+        const bx = man.x - 17, by = FLOOR - 86, bw = 34, bh = 86;
+        const cx = Math.max(bx, Math.min(t.x, bx + bw));
+        const cy = Math.max(by, Math.min(t.y, by + bh));
+        const d2 = (t.x - cx) ** 2 + (t.y - cy) ** 2;
+        if (d2 < t.r * t.r) {
+          tomatoes.splice(i, 1);
+          lives--; hurtT = 1.2; shake = 0.35;
+          splat(t.x, t.y, 22, true); sfx('hit'); updateHud();
+          if (lives <= 0) { gameOver(); return; }
+          continue;
+        }
+      }
+      // dodged: reached the floor
+      if (t.y > FLOOR + 4) {
+        tomatoes.splice(i, 1);
+        floorSplats.push({ x: t.x, y: FLOOR + rand(2, 10), r: rand(11, 17), life: 5 });
+        splat(t.x, FLOOR, 6, false);
+        score++; dodged++;
+        sfx('pop');
+        if (dodged % 10 === 0) {
+          level++; showToast('লেভেল ' + bn(level) + '! 🍅'); sfx('level');
+        }
+        updateHud();
+      }
+    }
+
+    for (let i = drops.length - 1; i >= 0; i--) {
+      const d = drops[i];
+      d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 700 * dt; d.life -= dt;
+      if (d.life <= 0) drops.splice(i, 1);
+    }
+    for (let i = floorSplats.length - 1; i >= 0; i--) {
+      floorSplats[i].life -= dt;
+      if (floorSplats[i].life <= 0) floorSplats.splice(i, 1);
+    }
+  }
+
+  // ---------- drawing ----------
+  function drawStage(time) {
+    // back wall
+    const wall = ctx.createLinearGradient(0, 0, 0, FLOOR);
+    wall.addColorStop(0, '#2a0a14'); wall.addColorStop(1, '#4a1424');
+    ctx.fillStyle = wall; ctx.fillRect(0, 0, W, FLOOR);
+
+    // spotlight following the performer
+    const g = ctx.createRadialGradient(man.x, FLOOR - 40, 10, man.x, FLOOR - 40, 230);
+    g.addColorStop(0, 'rgba(255,243,201,.38)'); g.addColorStop(1, 'rgba(255,243,201,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    // floor
+    ctx.fillStyle = '#7b4e25'; ctx.fillRect(0, FLOOR, W, H - FLOOR);
+    ctx.fillStyle = '#6a4120';
+    for (let x = 0; x < W; x += 50) ctx.fillRect(x, FLOOR, 2, H - FLOOR);
+    ctx.fillStyle = '#a5703a'; ctx.fillRect(0, FLOOR, W, 5);
+
+    // curtains
+    ctx.fillStyle = '#6d1224';
+    ctx.fillRect(0, 0, 18, FLOOR); ctx.fillRect(W - 18, 0, 18, FLOOR);
+    ctx.fillStyle = '#8a1a31';
+    for (let y = 0; y < FLOOR; y += 1) {}
+    ctx.fillRect(4, 0, 4, FLOOR); ctx.fillRect(W - 8, 0, 4, FLOOR);
+
+    // floor splats
+    floorSplats.forEach(s => {
+      ctx.globalAlpha = Math.min(1, s.life / 1.5) * 0.85;
+      ctx.fillStyle = '#c42616';
+      ctx.beginPath(); ctx.ellipse(s.x, s.y, s.r, s.r * 0.35, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(s.x + s.r * 0.6, s.y + 2, s.r * 0.4, s.r * 0.18, 0, 0, 7); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // audience band
+    ctx.fillStyle = '#12050a'; ctx.fillRect(0, 70, W, 0);
+    const band = ctx.createLinearGradient(0, 0, 0, 100);
+    band.addColorStop(0, '#0d0306'); band.addColorStop(1, 'rgba(13,3,6,0)');
+    ctx.fillStyle = band; ctx.fillRect(0, 0, W, 100);
+
+    seats.forEach((s, i) => {
+      const bob = Math.sin(time * 3 + s.ph) * 2;
+      ctx.fillStyle = s.tone;
+      ctx.beginPath(); ctx.arc(s.x, s.y + bob, 15, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(s.x, s.y + 30 + bob, 22, 16, 0, 0, 7); ctx.fill();
+      // angry eyes glint
+      ctx.fillStyle = '#ffd9a0';
+      ctx.fillRect(s.x - 7, s.y - 3 + bob, 4, 3); ctx.fillRect(s.x + 3, s.y - 3 + bob, 4, 3);
+      if (s.arm > 0) {
+        ctx.strokeStyle = s.tone; ctx.lineWidth = 7; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(s.x + 12, s.y + 22 + bob); ctx.lineTo(s.x + 22, s.y + 38); ctx.stroke();
+        ctx.fillStyle = '#e0301e'; ctx.beginPath(); ctx.arc(s.x + 22, s.y + 40, 6, 0, 7); ctx.fill();
+      }
+    });
+  }
+
+  function drawTomato(t) {
+    ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(t.rot);
+    const g = ctx.createRadialGradient(-4, -5, 2, 0, 0, t.r + 2);
+    g.addColorStop(0, '#ff6a4d'); g.addColorStop(1, '#c42010');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, t.r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#4f9a3a';
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const a = i * (Math.PI * 2 / 5) - Math.PI / 2;
+      ctx.lineTo(Math.cos(a) * 9, -t.r + 3 + Math.sin(a) * 4);
+      ctx.lineTo(Math.cos(a + 0.6) * 3, -t.r + 3 + Math.sin(a + 0.6) * 1.5);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath(); ctx.ellipse(-5, -4, 3, 2, -0.6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawMan() {
+    if (hurtT > 0 && Math.floor(hurtT * 14) % 2 === 0) return; // blink while invulnerable
+    const x = man.x, y = FLOOR;
+    const sw = Math.sin(man.step) * 7;
+    const hurt = hurtT > 0.6;
+    ctx.save();
+    ctx.translate(x, y);
+    if (hurt) ctx.rotate(Math.sin(performance.now() / 30) * 0.06);
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0, 2, 22, 5, 0, 0, 7); ctx.fill();
+    // legs
+    ctx.strokeStyle = '#1c1c2e'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-6, -28); ctx.lineTo(-6 + sw, -2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(6, -28); ctx.lineTo(6 - sw, -2); ctx.stroke();
+    // shoes
+    ctx.fillStyle = '#111';
+    ctx.fillRect(-12 + sw, -4, 12, 5); ctx.fillRect(1 - sw, -4, 12, 5);
+    // body (checkered clown-ish jacket)
+    ctx.fillStyle = '#2f6fcf'; ctx.fillRect(-15, -66, 30, 42);
+    ctx.fillStyle = '#f2c94c'; ctx.fillRect(-15, -50, 30, 4);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(-5, -66); ctx.lineTo(0, -52); ctx.lineTo(5, -66); ctx.fill();
+    // arms
+    ctx.strokeStyle = '#2f6fcf'; ctx.lineWidth = 7;
+    if (hurt) {
+      ctx.beginPath(); ctx.moveTo(-14, -62); ctx.lineTo(-26, -86); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(14, -62); ctx.lineTo(26, -86); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.moveTo(-14, -62); ctx.lineTo(-22, -40 + sw * 0.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(14, -62); ctx.lineTo(22, -40 - sw * 0.5); ctx.stroke();
+    }
+    // head
+    ctx.fillStyle = '#ffd7b0'; ctx.beginPath(); ctx.arc(0, -78, 13, 0, 7); ctx.fill();
+    // hat
+    ctx.fillStyle = '#222'; ctx.fillRect(-14, -90, 28, 4); ctx.fillRect(-9, -108, 18, 19);
+    ctx.fillStyle = '#c42616'; ctx.fillRect(-9, -95, 18, 4);
+    // face
+    ctx.fillStyle = '#222';
+    ctx.fillRect(-6 + man.face * 1.5, -81, 3, hurt ? 1.5 : 4); ctx.fillRect(3 + man.face * 1.5, -81, 3, hurt ? 1.5 : 4);
+    ctx.strokeStyle = '#222'; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    if (hurt) ctx.arc(0, -70, 4, 0, Math.PI * 2); else ctx.arc(0, -74, 5, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+    // splatter on jacket when hurt
+    if (hurtT > 0) {
+      ctx.fillStyle = 'rgba(210,40,25,.9)';
+      ctx.beginPath(); ctx.arc(-4, -55, 8, 0, 7); ctx.arc(7, -45, 5, 0, 7); ctx.arc(-9, -40, 4, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function draw(time) {
+    ctx.save();
+    if (shake > 0) ctx.translate(rand(-4, 4), rand(-4, 4));
+    ctx.clearRect(-10, -10, W + 20, H + 20);
+    drawStage(time);
+    drawMan();
+    tomatoes.forEach(drawTomato);
+    ctx.fillStyle = '#d02a18';
+    drops.forEach(d => { ctx.globalAlpha = Math.min(1, d.life * 3); ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 7); ctx.fill(); });
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // ---------- loop ----------
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000 || 0);
+    last = now;
+    if (state === 'play') update(dt);
+    draw(now / 1000);
+    requestAnimationFrame(frame);
+  }
+  last = performance.now();
+  reset();
+  requestAnimationFrame(frame);
+
+  // ---------- input ----------
+  const setKey = (e, v) => {
+    const k = e.key;
+    if (k === 'ArrowLeft' || k === 'a' || k === 'A') { keys.l = v; e.preventDefault(); }
+    else if (k === 'ArrowRight' || k === 'd' || k === 'D') { keys.r = v; e.preventDefault(); }
+    else if (v && (k === 'Enter' || k === ' ') && state !== 'play') { e.preventDefault(); start(); }
+  };
+  addEventListener('keydown', e => setKey(e, true));
+  addEventListener('keyup', e => setKey(e, false));
+  addEventListener('blur', () => { keys.l = keys.r = pad.l = pad.r = false; });
+
+  function bindPad(id, side) {
+    const b = el(id);
+    const on = e => { e.preventDefault(); pad[side] = true; b.classList.add('down'); };
+    const off = e => { pad[side] = false; b.classList.remove('down'); };
+    b.addEventListener('pointerdown', on);
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => b.addEventListener(n, off));
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  bindPad('btnL', 'l'); bindPad('btnR', 'r');
+
+  el('startBtn').addEventListener('click', start);
+  document.addEventListener('visibilitychange', () => { last = performance.now(); });
+})();
+</script>
+</body>
+</html>
